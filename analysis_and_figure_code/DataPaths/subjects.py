@@ -210,8 +210,9 @@ figpath_tn = fig_root / "two_novel"
 
 
 class ProcessData:
-    def __init__(self, basepath, tag=None):
+    def __init__(self, basepath, tag=None, use_realigned_pos=False):
         basepath = Path(basepath)
+        self.basepath = basepath
         try:
             xml_files = sorted(basepath.glob("*.xml"))
             assert len(xml_files) == 1, f"Found {len(xml_files)} .xml files"
@@ -279,10 +280,14 @@ class ProcessData:
         self.off_epochs = core.Epoch.from_file(fp.with_suffix(".off_epochs.npy"))
         self.micro_arousals = core.Epoch.from_file(fp.with_suffix(".micro_arousals.npy"))
 
-        self.maze_run = core.Epoch.from_file(fp.with_suffix(".maze.running.npy"))
         self.maze1_run = core.Epoch.from_file(fp.with_suffix(".maze1.running.npy"))
         self.maze2_run = core.Epoch.from_file(fp.with_suffix(".maze2.running.npy"))
-        self.remaze_run = core.Epoch.from_file(fp.with_suffix(".remaze.running.npy"))
+        if not use_realigned_pos:
+            self.maze_run = core.Epoch.from_file(fp.with_suffix(".maze.running.npy"))
+            self.remaze_run = core.Epoch.from_file(fp.with_suffix(".remaze.running.npy"))
+        elif use_realigned_pos:
+            self.maze_run = core.Epoch.from_file(fp.with_suffix(".maze.running.realigned.npy"))
+            self.remaze_run = core.Epoch.from_file(fp.with_suffix(".remaze.running.realigned.npy"))
 
         # Piezo epochs caputuring interruptions during sleep deprivations
         self.handling = core.Epoch.from_file(fp.with_suffix(".handling.npy"))
@@ -297,13 +302,22 @@ class ProcessData:
             d = np.load(f, allow_pickle=True).item()
             self.position = core.Position.from_dict(d)
 
-        if (f := self.filePrefix.with_suffix(".maze.linear.npy")).is_file():
-            d = np.load(f, allow_pickle=True).item()
-            self.maze = core.Position.from_dict(d)
+        if not use_realigned_pos:
+            if (f := self.filePrefix.with_suffix(".maze.linear.npy")).is_file():
+                d = np.load(f, allow_pickle=True).item()
+                self.maze = core.Position.from_dict(d)
 
-        if (f := self.filePrefix.with_suffix(".remaze.linear.npy")).is_file():
-            d = np.load(f, allow_pickle=True).item()
-            self.remaze = core.Position.from_dict(d)
+            if (f := self.filePrefix.with_suffix(".remaze.linear.npy")).is_file():
+                d = np.load(f, allow_pickle=True).item()
+                self.remaze = core.Position.from_dict(d)
+        elif use_realigned_pos:
+            if (f := self.filePrefix.with_suffix(".maze.linear.realigned.npy")).is_file():
+                d = np.load(f, allow_pickle=True).item()
+                self.maze = core.Position.from_dict(d)
+
+            if (f := self.filePrefix.with_suffix(".remaze.linear.realigned.npy")).is_file():
+                d = np.load(f, allow_pickle=True).item()
+                self.remaze = core.Position.from_dict(d)
 
         if (f := self.filePrefix.with_suffix(".maze1.linear.npy")).is_file():
             d = np.load(f, allow_pickle=True).item()
@@ -658,8 +672,8 @@ class Group:
     tag = None
     basedir = Path("/data/Clustering/sessions/")
 
-    def _process(self, rel_path):
-        return [ProcessData(self.basedir / rel_path, self.tag)]
+    def _process(self, rel_path, use_relaligned_pos=False):
+        return [ProcessData(self.basedir / rel_path, self.tag, use_relaligned_pos)]
 
     def data_exist(self):
         self.allsess
@@ -767,7 +781,20 @@ class Sd(Group):
         pipelines: List[ProcessData] = (
             self.ratSday3 + self.ratUday1 + self.ratUday4 + self.ratVday2 + self.ratRday2
         )
+
         return pipelines
+
+    @property
+    def remaze_realign(self):
+        """use position data that has been re-aligned using the correlation between
+        speed and theta power from an electrode in or above the cell layer (not in radiatum, where theta power is
+        NOT correlated with speed, see Kennedy et al. (2022) J.Neuro: https://doi.org/10.1523/JNEUROSCI.0987-21.2022"""
+        pipelines: List[ProcessData] = (
+                self.ratSday3re + self.ratUday1re + self.ratUday4re + self.ratVday2re + self.ratRday2re
+        )
+        return pipelines
+
+
 
     @property
     def handling_data_sess(self):
@@ -791,20 +818,40 @@ class Sd(Group):
         return self._process("RatS/Day3SD/")
 
     @property
+    def ratSday3re(self):
+        return self._process("RatS/Day3SD/", use_relaligned_pos=True)
+
+    @property
     def ratRday2(self):
         return self._process("RatR/Day2SD")
+
+    @property
+    def ratRday2re(self):
+        return self._process("RatR/Day2SD", use_relaligned_pos=True)
 
     @property
     def ratUday1(self):
         return self._process("RatU/RatUDay1SD")
 
     @property
+    def ratUday1re(self):
+        return self._process("RatU/RatUDay1SD", use_relaligned_pos=True)
+
+    @property
     def ratUday4(self):
         return self._process("RatU/RatUDay4SD")
 
     @property
+    def ratUday4re(self):
+        return self._process("RatU/RatUDay4SD", use_relaligned_pos=True)
+
+    @property
     def ratVday2(self):
         return self._process("RatV/RatVDay2SD/")
+
+    @property
+    def ratVday2re(self):
+        return self._process("RatV/RatVDay2SD/", use_relaligned_pos=True)
 
     # @property
     # def ratUday5(self):
@@ -913,7 +960,17 @@ class Nsd(Group):
     @property
     def remaze(self):
         pipelines: List[ProcessData] = (
-            self.ratSday2 + self.ratUday2 + self.ratVday1 + self.ratVday3
+                self.ratSday2 + self.ratUday2 + self.ratVday1 + self.ratVday3
+        )
+        return pipelines
+
+    @property
+    def remaze_realign(self):
+        """use position data that has been re-aligned using the correlation between
+                speed and theta power from an electrode in or above the cell layer (not in radiatum, where theta power is
+                NOT correlated with speed, see Kennedy et al. (2022) J.Neuro: https://doi.org/10.1523/JNEUROSCI.0987-21.2022"""
+        pipelines: List[ProcessData] = (
+                self.ratSday2 + self.ratUday2re + self.ratVday1re + self.ratVday3re
         )
         return pipelines
 
@@ -942,12 +999,24 @@ class Nsd(Group):
         return self._process("RatU/RatUDay2NSD/")
 
     @property
+    def ratUday2re(self):
+        return self._process("RatU/RatUDay2NSD/", use_relaligned_pos=True)
+
+    @property
     def ratVday1(self):
         return self._process("RatV/RatVDay1NSD/")
 
     @property
+    def ratVday1re(self):
+        return self._process("RatV/RatVDay1NSD/", use_relaligned_pos=True)
+
+    @property
     def ratVday3(self):
         return self._process("RatV/RatVDay3NSD")
+
+    @property
+    def ratVday3re(self):
+        return self._process("RatV/RatVDay3NSD", use_relaligned_pos=True)
 
     def __add__(self, other):
         pipelines: List[ProcessData] = self.allsess + other.allsess
@@ -1377,6 +1446,10 @@ def ripple_sess():
 
 def remaze_sess():
     return nsd.remaze + sd.remaze
+
+
+def remaze_realign_sess():
+    return nsd.remaze_realign + sd.remaze_realign
 
 
 def bilateral_sess():
