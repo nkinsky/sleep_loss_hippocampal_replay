@@ -308,11 +308,11 @@ class Plotter:
 
         return self
 
-    def striplineplot_sd(self, palette=None, dodge=0.1, zorder=2, **kwargs):
+    def striplineplot_sd(self, palette=None, dodge=0.1, zorder=2, units="session", **kwargs):
         ax = sns.lineplot(
             **self.plot_kw,
             palette=palette,
-            units="session",
+            units=units,
             estimator=None,
             lw=0.25,
             alpha=0.2,
@@ -346,11 +346,17 @@ class Plotter:
                     x = line.get_xdata()
                     if lw == 0.25:
                         if line_color == palette[0]:
-                            line.set_xdata(x - 0.2)
+                            try:  # New version of matplotlib is catching wrong lines, bugfix
+                                line.set_xdata(x - 0.2)
+                            except TypeError:
+                                pass
                             line.set_zorder(zorder - 10)
 
                         if line_color == palette[1]:
-                            line.set_xdata(x + 0.2)
+                            try:
+                                line.set_xdata(x + 0.2)
+                            except TypeError:
+                                pass
                             line.set_zorder(zorder - 10)
 
         self.plot_kw["ax"].legend("", frameon=False)
@@ -373,6 +379,7 @@ class Plotter:
         alpha_trend_across: float or None = 0.10,
         fontsize=8,
         verbose=False,
+        pair_names=["NSD", "SD"],
         **kwargs,
     ):
         ax = self.plot_kw["ax"]
@@ -398,15 +405,17 @@ class Plotter:
                 stat_across = StatTest(stat_across, custom_long_name, custom_short_name)
 
             # Across groups
-            pairs = [((_, "NSD"), (_, "SD")) for _ in orders]
+            pair_name1, pair_name2 = pair_names
+            # pairs = [((_, "NSD"), (_, "SD")) for _ in orders]
+            pairs = [((_, pair_name1), (_, pair_name2)) for _ in orders]
             if ("0-2.5" in orders) & ("5-7.5" in orders):
-                pairs = pairs + [(("0-2.5", "NSD"), ("5-7.5", "SD"))]
+                pairs = pairs + [(("0-2.5", pair_name1), ("5-7.5", pair_name2))]
             elif ("ZT 0-2.5" in orders) & ("ZT 5-7.5" in orders):
-                pairs = pairs + [(("ZT 0-2.5", "NSD"), ("ZT 5-7.5", "SD"))]
+                pairs = pairs + [(("ZT 0-2.5", pair_name1), ("ZT 5-7.5", pair_name2))]
             elif ("0-1" in orders) & ("5-6" in orders):
-                pairs = pairs + [(("0-1", "NSD"), ("5-6", "SD"))]
+                pairs = pairs + [(("0-1", pair_name1), ("5-6", pair_name2))]
             elif ("ZT 0-1" in orders) & ("ZT 5-6" in orders):
-                pairs = pairs + [(("ZT 0-1", "NSD"), ("ZT 5-6", "SD"))]
+                pairs = pairs + [(("ZT 0-1", pair_name1), ("ZT 5-6", pair_name2))]
             annotator = Annotator(pairs=pairs, **self.plot_kw, order=orders)
             annotator.configure(test=stat_across, **stat_kw, color="k", verbose=verbose)
             annotator.apply_and_annotate()
@@ -429,7 +438,8 @@ class Plotter:
 
             # Within groups
             yshift = 0
-            for i, g in enumerate(["NSD", "SD"]):
+            # for i, g in enumerate(["NSD", "SD"]):
+            for i, g in enumerate(pair_names):
                 ax2 = ax.inset_axes([0.1, 1.1 + yshift, 0.9, 0.3])
                 ax2.axis("off")
                 self.plot_kw["ax"] = ax2
